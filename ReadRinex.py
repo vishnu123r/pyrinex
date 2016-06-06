@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from matplotlib.pyplot import figure,show
+from matplotlib.pyplot import figure,show,close
 #
 from pyrinex.rinex_parser import Rinex
 
@@ -12,13 +12,13 @@ if __name__ == '__main__':
     p.add_argument('--profile',help='profile code for debugging',action='store_true')
     p = p.parse_args()
 
-    Data = Rinex(p.rinexfn)     
-    
-    
-    if rinexfn.lower().endswith('n'):
+    Data = Rinex(p.rinexfn)
+
+
+    if p.rinexfn.lower().endswith('n'):
         nav = readRinexNav(rinexfn,p.odir)
         print(nav.head())
-    elif rinexfn.lower().endswith('o'):
+    else:
         if p.profile:
             import cProfile
             from pstats import Stats
@@ -26,14 +26,18 @@ if __name__ == '__main__':
             cProfile.run('rinexobs(rinexfn,p.odir,p.maxtimes)',profFN)
             Stats(profFN).sort_stats('time','cumulative').print_stats(20)
         else:
-            blocks = rinexobs(rinexfn,p.odir,p.maxtimes)
-               
-            ax = figure().gca()
-            ax.plot(blocks.items,blocks.ix[:,0,'P1'])
-            ax.set_xlabel('time [UTC]')
-            ax.set_ylabel('P1')
-    #%% TEC can be made another column (on the minor_axis) of the blocks Panel.
-    else:
-        raise ValueError('I dont know what type of file youre trying to read')
+            blocks = Data.readrinex()
+
+            pkey = ('P1','C1')
+            for k in pkey:
+                try:
+                    ax = figure().gca()
+                    ax.plot(blocks.items,blocks.ix[:,0,k])
+                    ax.set_xlabel('time [UTC]')
+                    ax.set_ylabel(k)
+                    ax.set_title(k)
+                except KeyError:
+                    close()
+
 
     show()

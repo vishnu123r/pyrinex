@@ -25,24 +25,21 @@ class Rinex():
         self.parse_obs_header()
         self.obstimes()
 
-        self.readrinex()
-
     def readrinex(self):
-        blocks = Panel(data = empty((1,1,len(self.obstypes))),
- #                       items=[], #time
-#                        major_axis=self.svnames, #satellites
+        blocks = Panel(items=range(self.Nt), #time
+                       major_axis=self.svnames, #satellites
                        minor_axis=self.obstypes) # obs types
+        btime=[]
 
         with self.fn.open('r') as f:
             for line in f:
                 if 'END OF HEADER' in line[60:]:
                     break
 
-            for line in f:
+            for i,line in enumerate(f):
                 Nsv = int(line[29:32]) # how many SV's received at this interval
 
-                obslinespersat = int(ceil(self.Nobstypes/self.maxobsperline))
-                Nrows = Nsv*obslinespersat # how many rows to read for this SV at this interval
+                Nrows = Nsv*self.obslinespersat # how many rows to read for this SV at this interval
                 satnames = line[32:68]
 
 
@@ -54,13 +51,23 @@ class Rinex():
                 blocksvnames = self.satnumfixer(self.grouper(satnames,3,Nsv))
                 #%% read this INTERVAL's text block
                 block = ''.join(f.readline() for _ in range(Nrows))  # Nrows of text as a big string
-                btime = self._obstime(line[:26].split()) #always whitespace
+                btime.append(self._obstime(line[:26].split())) #always whitespace
                 bdf = self._block2df(block,blocksvnames,Nsv)
+
                 try:
-                    blocks.loc[btime,blocksvnames,:] = bdf
-                except KeyError: #a new SV has come into view
-                    for i,n in enumerate(blocksvnames):
-                        blocks.loc[btime,n] = bdf[i,:]
+                    blocks.ix[i,blocksvnames,:] = bdf
+                except KeyError: #a new SV has come into view, only occaisionally
+                    for j,n in enumerate(blocksvnames):
+                        blocks.ix[i,n,:] = bdf[j,:]
+
+        blocks.dropna(how='all',inplace=True)
+
+        blocks = Panel(data=blocks.values,
+                       items=btime,
+                       major_axis=blocks.major_axis,
+                       minor_axis=blocks.minor_axis)
+
+        return blocks
 
     def whichRinex(self):
         """
@@ -96,6 +103,7 @@ class Rinex():
                     break
 
         assert self.Nobstypes == len(self.obstypes),'number of observation types does not match header'
+        self.obslinespersat = int(ceil(self.Nobstypes/self.maxobsperline))
 
     def obstimes(self):
         try:
@@ -106,7 +114,10 @@ class Rinex():
 
             self.t = self.tstart + interval_delta * arange(self.Nt)
         except AttributeError:
-            pass
+            #estimate number of time steps
+            filesize = self.fn.stat().st_size
+            self.Nt = int(2*filesize/((6*self.obslinespersat)*80)) #approximate
+
 
     def grabfromhead(self,line):
         """
@@ -124,7 +135,7 @@ class Rinex():
         if 'RINEX VERSION / TYPE' in ltype:
             pass #already handled the first line
         elif 'APPROX POSITION XYZ' in ltype:
-            self.site_ecef = (float(line[:14]), float(line[14:28]), float(line[28:42]))
+            self.site_ecef = (float(line[:15]), float(line[15:30]), float(line[30:45]))
         elif 'INTERVAL' in ltype:
             self.interval = float(line[:10])
         elif '# OF SATELLITES' in ltype:
