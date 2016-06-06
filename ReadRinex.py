@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 from matplotlib.pyplot import figure,show
 #
-from pyrinex.readRinexNav import readRinexNav
-from pyrinex.readRinexObs import rinexobs
+from pyrinex.rinex_parser import Rinex
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -13,7 +12,9 @@ if __name__ == '__main__':
     p.add_argument('--profile',help='profile code for debugging',action='store_true')
     p = p.parse_args()
 
-    rinexfn = p.rinexfn
+    Data = Rinex(p.rinexfn)     
+    
+    
     if rinexfn.lower().endswith('n'):
         nav = readRinexNav(rinexfn,p.odir)
         print(nav.head())
