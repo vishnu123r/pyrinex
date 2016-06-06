@@ -8,7 +8,7 @@ if __name__ == '__main__':
     p = ArgumentParser(description='example of reading a RINEX 2 Navigation file')
     p.add_argument('rinexfn',help='path to RINEX file')
     p.add_argument('-o','--odir',help='directory in which to write data as HDF5')
-    p.add_argument('--maxtimes',help='Choose to read only the first N INTERVALs of OBS file',type=int)
+    p.add_argument('--noplot',help='Choose to not plot',action='store_false')
     p.add_argument('--profile',help='profile code for debugging',action='store_true')
     p = p.parse_args()
 
@@ -27,17 +27,17 @@ if __name__ == '__main__':
             Stats(profFN).sort_stats('time','cumulative').print_stats(20)
         else:
             blocks = Data.readrinex()
-
-            pkey = ('P1','C1')
-            for k in pkey:
-                try:
-                    ax = figure().gca()
-                    ax.plot(blocks.items,blocks.ix[:,0,k])
-                    ax.set_xlabel('time [UTC]')
-                    ax.set_ylabel(k)
-                    ax.set_title(k)
-                except KeyError:
-                    close()
+            if not p.noplot:
+                pkey = ('P1','C1')
+                for k in pkey:
+                    try:
+                        ax = figure().gca()
+                        ax.plot(blocks.items,blocks.ix[:,0,k])
+                        ax.set_xlabel('time [UTC]')
+                        ax.set_ylabel(k)
+                        ax.set_title(k)
+                    except KeyError:
+                        close()
 
 
     show()
