@@ -8,14 +8,15 @@ MIT License
 Program overviw:
 1) scan the whole file for the header and other information using scan(lines)
 2) each epoch is read and the information is put in a 4D Panel
-3)  rinexobs can also be sped up with if an h5 file is provided, 
+3)  rinexobs can also be sped up with if an h5 file is provided,
     also rinexobs can save the rinex file as an h5. The header will
-    be returned only if specified.    
+    be returned only if specified.
 
 rinexobs() returns the data in a 4D Panel, [Parameter,Sat #,time,data/loss of lock/signal strength]
 """
 from __future__ import division #yes this is needed for py2 here.
 import numpy as np
+from xarray import Dataset
 from pandas import Panel4D
 from pandas.io.pytables import read_hdf
 from io import BytesIO
@@ -24,7 +25,7 @@ import time
 from datetime import datetime
 
 def rinexobs(rinexfile,h5file=None,returnHead=False,writeh5=False):
-    
+
     #open file, get header info, possibly speed up reading data with a premade h5 file
     stem,ext = splitext(expanduser(rinexfile))
     with open(rinexfile,'r') as f:
@@ -38,13 +39,13 @@ def rinexobs(rinexfile,h5file=None,returnHead=False,writeh5=False):
         else:
             data = read_hdf(h5file,key='data')
         print("finished in {0:.2f} seconds".format(time.time()-t))
-        
+
     #write an h5 file if specified
     if writeh5:
         h5fn = stem + '.h5'
         print('saving OBS data to {}'.format(h5fn))
         data.to_hdf(h5fn,key='data',mode='w',format='table')
-        
+
     #return info including header if desired
     if returnHead:
         return header,data
@@ -55,7 +56,7 @@ def rinexobs(rinexfile,h5file=None,returnHead=False,writeh5=False):
 # this will scan the document for the header info and for the line on
 # which each block starts
 def scan(lines):
-    header={}        
+    header={}
     eoh=0
     for i,line in enumerate(lines):
         if "END OF HEADER" in line:
@@ -70,7 +71,7 @@ def scan(lines):
     header['# / TYPES OF OBSERV'] = header['# / TYPES OF OBSERV'].split()
     header['# / TYPES OF OBSERV'][0] = int(header['# / TYPES OF OBSERV'][0])
     header['INTERVAL'] = float(header['INTERVAL'])
-        
+
     headlines=[]
     obstimes=[]
     sats=[]
@@ -93,7 +94,7 @@ def scan(lines):
                 sats.append(sp)
             else:
                 sats.append([int(lines[i][33+s*3:35+s*3]) for s in range(numsvs)])
-        
+
             i+=numsvs*int(np.ceil(header['# / TYPES OF OBSERV'][0]/5))+1
         else:
             #there was a comment or some header info
@@ -110,25 +111,27 @@ def scan(lines):
 
 
 def processBlocks(lines,header,obstimes,svset,headlines,sats):
-    
+
     obstypes = header['# / TYPES OF OBSERV'][1:]
-    blocks = np.nan*np.ones((len(obstypes),max(svset)+1,len(obstimes),3))
-    
+    blocks = np.nan*np.ones((len(obstypes),max(svset)+1,len(obstimes)))
+    #Bx = Dataset({'data})
+
     for i in range(len(headlines)):
         linesinblock = len(sats[i])*int(np.ceil(header['# / TYPES OF OBSERV'][0]/5))
         block = ''.join(lines[headlines[i]+1:headlines[i]+linesinblock+1])
-        bdf = _block2df(block,obstypes,sats[i],len(sats[i]))
-        blocks[:,np.asarray(sats[i],int),i,:] = bdf
-        
-    blocks = Panel4D(blocks,
+        data,lli,ssi = _block2df(block,obstypes,sats[i],len(sats[i]))
+        blocks[:,np.asarray(sats[i],int),i] = data
+
+    B = Panel4D(blocks,
                      labels=obstypes,
                      items=np.arange(max(svset)+1),
                      major_axis=obstimes,
                      minor_axis=['data','lli','ssi'])
-    blocks = blocks[:,list(svset),:,:]
-    
-    return blocks       
-        
+
+    Bfilt = B[:,list(svset),:,:]
+
+    return Bfilt
+
 
 def _obstime(fol):
     year = int(fol[0])
@@ -145,7 +148,7 @@ def _obstime(fol):
 def _block2df(block,obstypes,svnames,svnum):
     """
     input: block of text corresponding to one time increment INTERVAL of RINEX file
-    output: 2-D array of float64 data from block. Future: consider whether best to use Numpy, Pandas, or Xray.
+    output: vectors of float64 data from block.
     """
     nobs = len(obstypes)
     stride=3
@@ -154,10 +157,8 @@ def _block2df(block,obstypes,svnames,svnum):
     barr = np.genfromtxt(strio, delimiter=(14,1,1)*5).reshape((svnum,-1), order='C')
 
     data = barr[:,0:nobs*stride:stride]
-    lli  = barr[:,1:nobs*stride:stride]
-    ssi  = barr[:,2:nobs*stride:stride]
+    lli  = barr[:,1:nobs*stride:stride][:,-2:].astype(int)
+    ssi  = barr[:,2:nobs*stride:stride][:,-2:].astype(int)
 
-    data = np.vstack(([data],[lli],[ssi])).T
-
-    return data
+    return data,lli,ssi
 
